@@ -1,36 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-export default function ApplyPage() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    snsAccount: "",
-    followers: "",
-    category: "美容・コスメ",
-    pr: "",
-  });
+function ApplyFormContent() {
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId");
+  const router = useRouter();
 
+  const [projectTitle, setProjectTitle] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [snsAccount, setSnsAccount] = useState("");
+  const [followerCount, setFollowerCount] = useState("");
+  const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  useEffect(() => {
+    if (projectId) {
+      async function fetchProject() {
+        try {
+          const docRef = doc(db, "projects", projectId as string);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setProjectTitle(docSnap.data().title);
+          }
+        } catch (e) {
+          console.error("案件情報の取得失敗:", e);
+        }
+      }
+      fetchProject();
+    }
+  }, [projectId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!projectId) {
+      alert("案件IDが見つかりません。");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // 案件IDをprojectIdとして明示的に保存
       await addDoc(collection(db, "applications"), {
-        ...formData,
-        followers: Number(formData.followers) || 0,
-        status: "未対応",
+        projectId: String(projectId),
+        name,
+        email,
+        snsAccount,
+        followerCount,
+        note,
+        status: "pending",
         createdAt: serverTimestamp(),
       });
+
       setSubmitted(true);
     } catch (error) {
-      console.error("送信エラー:", error);
+      console.error("応募送信エラー:", error);
       alert("送信に失敗しました。もう一度お試しください。");
     } finally {
       setLoading(false);
@@ -39,143 +69,107 @@ export default function ApplyPage() {
 
   if (submitted) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-xl shadow-md max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-            ✓
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">ご応募ありがとうございます</h1>
-          <p className="text-gray-600 mb-6">
-            内容を確認のうえ、ご登録いただいたメールアドレスへ担当者よりご連絡いたします。
-          </p>
-          <button
-            onClick={() => {
-              setSubmitted(false);
-              setFormData({
-                name: "",
-                email: "",
-                snsAccount: "",
-                followers: "",
-                category: "美容・コスメ",
-                pr: "",
-              });
-            }}
-            className="text-indigo-600 font-medium hover:underline"
-          >
-            別の内容でフォームを送信する
-          </button>
-        </div>
-      </main>
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center max-w-md mx-auto">
+        <div className="text-4xl mb-3">🎉</div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">ご応募ありがとうございました！</h2>
+        <p className="text-xs text-slate-500 mb-6">
+          選考結果につきましては、ご登録いただいたメールアドレス宛にご連絡いたします。
+        </p>
+        <button
+          onClick={() => router.push("/projects")}
+          className="bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-lg hover:bg-slate-800 transition"
+        >
+          案件一覧へ戻る
+        </button>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto bg-white p-8 rounded-xl shadow-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">マイクロインフルエンサー募集</h1>
-          <p className="text-gray-600 mt-2">
-            ブランド案件へのお申し込みはこちらのフォームからご記入ください。
-          </p>
+    <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm max-w-lg mx-auto">
+      <div className="mb-6">
+        <span className="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded">応募フォーム</span>
+        <h1 className="text-lg font-bold text-slate-900 mt-1">
+          {projectTitle ? `「${projectTitle}」に応募` : "案件への応募"}
+        </h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">お名前 *</label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="山田 太郎"
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              お名前（氏名） <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-              placeholder="山田 太郎"
-            />
-          </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">メールアドレス *</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="example@email.com"
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              メールアドレス <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-              placeholder="example@email.com"
-            />
-          </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">メインSNSアカウント名 (ID) *</label>
+          <input
+            type="text"
+            required
+            value={snsAccount}
+            onChange={(e) => setSnsAccount(e.target.value)}
+            className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="@username"
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              SNSアカウント（Instagram / TikTok IDなど） <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.snsAccount}
-              onChange={(e) => setFormData({ ...formData, snsAccount: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-              placeholder="@username"
-            />
-          </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">フォロワー数 *</label>
+          <input
+            type="number"
+            required
+            value={followerCount}
+            onChange={(e) => setFollowerCount(e.target.value)}
+            className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="5000"
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              フォロワー数（概算） <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              required
-              value={formData.followers}
-              onChange={(e) => setFormData({ ...formData, followers: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-              placeholder="3000"
-            />
-          </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">自己PR・アピールポイント</label>
+          <textarea
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="過去の案件実績や意気込みをご記入ください"
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              得意なジャンル
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-            >
-              <option value="美容・コスメ">美容・コスメ</option>
-              <option value="ファッション">ファッション</option>
-              <option value="グルメ・カフェ">グルメ・カフェ</option>
-              <option value="ライフスタイル・インテリア">ライフスタイル・インテリア</option>
-              <option value="旅行・お出かけ">旅行・お出かけ</option>
-              <option value="その他">その他</option>
-            </select>
-          </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition disabled:opacity-50 mt-2"
+        >
+          {loading ? "送信中..." : "応募を送信する"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              自己PR・実績など
-            </label>
-            <textarea
-              rows={4}
-              value={formData.pr}
-              onChange={(e) => setFormData({ ...formData, pr: e.target.value })}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900"
-              placeholder="過去のPR案件実績や意気込みをご記入ください"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
-          >
-            {loading ? "送信中..." : "応募を送信する"}
-          </button>
-        </form>
-      </div>
-    </main>
+export default function ApplyPage() {
+  return (
+    <Suspense fallback={<div className="text-center p-8 text-xs text-slate-500">読み込み中...</div>}>
+      <ApplyFormContent />
+    </Suspense>
   );
 }
