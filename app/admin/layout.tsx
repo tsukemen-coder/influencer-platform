@@ -1,77 +1,68 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
-// 設定したい管理者パスワード
-const ADMIN_PASSWORD = "admin123"; // ※必要に応じて変更してください
-
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [error, setError] = useState(false);
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
 
-  // ページ読み込み時にログイン状態をチェック
   useEffect(() => {
-    const authStatus = sessionStorage.getItem("admin_authenticated");
-    if (authStatus === "true") {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
-  }, []);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === ADMIN_PASSWORD) {
-      sessionStorage.setItem("admin_authenticated", "true");
-      setIsAuthenticated(true);
-      setError(false);
-    } else {
-      setError(true);
-    }
+      if (!currentUser && pathname !== "/admin/login") {
+        router.push("/admin/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router, pathname]);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.push("/admin/login");
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-gray-100 flex items-center justify-center">読み込み中...</div>;
+  if (pathname === "/admin/login") {
+    return <>{children}</>;
   }
 
-  // 未認証の場合はパスワード入力画面を表示
-  if (!isAuthenticated) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-xl shadow-md max-w-sm w-full border border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">管理者認証</h2>
-          <p className="text-xs text-gray-500 mb-6 text-center">管理画面にアクセスするにはパスワードを入力してください。</p>
-          
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <input
-                type="password"
-                placeholder="パスワードを入力"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-              />
-              {error && (
-                <p className="text-red-500 text-xs mt-1">パスワードが正しくありません。</p>
-              )}
-            </div>
-            <button
-              type="submit"
-              className="w-full py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm hover:bg-indigo-700 transition"
-            >
-              ログイン
-            </button>
-          </form>
-        </div>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center text-sm text-gray-500">
+        認証状態を確認中...
       </div>
     );
   }
 
-  // 認証済みの場合は管理画面を表示
-  return <>{children}</>;
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-white border-b border-gray-200 py-3 px-6 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-gray-900 text-sm">インフルエンサー管理ポータル</span>
+          <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-0.5 rounded">Admin</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-500">{user.email}</span>
+          <button
+            onClick={handleLogout}
+            className="text-xs font-medium text-red-600 hover:text-red-800 underline"
+          >
+            ログアウト
+          </button>
+        </div>
+      </header>
+      <main>{children}</main>
+    </div>
+  );
 }
