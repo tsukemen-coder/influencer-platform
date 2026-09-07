@@ -1,189 +1,230 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useState, use } from "react";
+import { doc, getDoc, collection, query, where, getDocs, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, getDocs, updateDoc, query, orderBy } from "firebase/firestore";
 
 interface Project {
-  projectName: string;
-  media: string;
-  hashtags: string;
-  overview: string;
+  id: string;
+  title: string;
+  description: string;
+  reward: string;
+  platform: string;
+  status: string;
 }
 
 interface Application {
   id: string;
+  projectId: string;
   name: string;
+  email: string;
   snsAccount: string;
-  followers: number;
-  status: string;
-  appliedAt?: any;
+  followerCount: string;
+  note: string;
+  status: "pending" | "accepted" | "rejected";
+  createdAt: Timestamp;
 }
 
-export default function AdminProjectDetailPage() {
-  const params = useParams();
-  const id = params.id as string;
+export default function AdminProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const projectId = resolvedParams.id;
 
   const [project, setProject] = useState<Project | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const fetchProjectAndApps = async () => {
-    if (!id) return;
-    try {
-      // 案件データ取得
-      const projectDoc = await getDoc(doc(db, "projects", id));
-      if (projectDoc.exists()) {
-        setProject(projectDoc.data() as Project);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // 案件情報の取得
+        const projectDoc = await getDoc(doc(db, "projects", projectId));
+        if (projectDoc.exists()) {
+          setProject({ id: projectDoc.id, ...projectDoc.data() } as Project);
+        }
+
+        // 応募者一覧の取得
+        const q = query(collection(db, "applications"), where("projectId", "==", projectId));
+        const querySnapshot = await getDocs(q);
+        const appsData: Application[] = [];
+        querySnapshot.forEach((docSnap) => {
+          appsData.push({ id: docSnap.id, ...docSnap.data() } as Application);
+        });
+        
+        // 応募日時の降順でソート
+        appsData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setApplications(appsData);
+      } catch (error) {
+        console.error("データ取得エラー:", error);
+      } finally {
+        setLoading(false);
       }
+    }
 
-      // 応募者データ一覧を取得
-      const appsQuery = query(collection(db, "projects", id, "applications"), orderBy("appliedAt", "desc"));
-      const appsSnapshot = await getDocs(appsQuery);
-      const appsList: Application[] = [];
-      appsSnapshot.forEach((doc) => {
-        appsList.push({ id: doc.id, ...doc.data() } as Application);
+    fetchData();
+  }, [projectId]);
+
+  // ステータス更新処理
+  const handleStatusChange = async (appId: string, newStatus: "pending" | "accepted" | "rejected") => {
+    try {
+      await updateDoc(doc(db, "applications", appId), {
+        status: newStatus,
       });
-      setApplications(appsList);
+      setApplications((prev) =>
+        prev.map((app) => (app.id === appId ? { ...app, status: newStatus } : app))
+      );
     } catch (error) {
-      console.error("データの取得に失敗しました:", error);
-    } finally {
-      setLoading(false);
+      console.error("ステータス更新エラー:", error);
+      alert("ステータスの更新に失敗しました。");
     }
   };
 
-  useEffect(() => {
-    fetchProjectAndApps();
-  }, [id]);
-
-  // ステータス更新処理
-  const handleStatusChange = async (appId: string, newStatus: string) => {
-    try {
-      const appRef = doc(db, "projects", id, "applications", appId);
-      await updateDoc(appRef, { status: newStatus });
-      setApplications((prev) =>
-        prev.map((item) => (item.id === appId ? { ...item, status: newStatus } : item))
-      );
-    } catch (error) {
-      console.error("ステータスの変更に失敗しました:", error);
-      alert("更新に失敗しました");
+  // CSVダウンロード機能
+  const handleDownloadCSV = () => {
+    if (applications.length === 0) {
+      alert("ダウンロードする応募データがありません。");
+      return;
     }
+
+    const headers = ["氏名", "メールアドレス", "SNSアカウント", "フォロワー数", "ステータス", "自己PR・備考", "応募日時"];
+    const rows = applications.map((app) => [
+      `"${app.name || ""}"`,
+      `"${app.email || ""}"`,
+      `"${app.snsAccount || ""}"`,
+      `"${app.followerCount || ""}"`,
+      `"${app.status === "accepted" ? "採用" : app.status === "rejected" ? "不採用" : "選考中"}"`,
+      `"${(app.note || "").replace(/"/g, '""')}"`,
+      `"${app.createdAt?.toDate ? app.createdAt.toDate().toLocaleString("ja-JP") : ""}"`,
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `applications_${project?.title || "project"}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 採用通知定型文のコピー機能
+  const handleCopyMessage = (app: Application) => {
+    const message = `${app.name} 様
+
+この度は「${project?.title || "案件"}」にご応募いただき、誠にありがとうございます。
+
+慎重に選考を行いました結果、ぜひ ${app.name} 様に本案件をお願いしたくご連絡いたしました。
+
+【案件詳細】
+・案件名：${project?.title}
+・報酬：${project?.reward}
+
+今後の進め方につきまして、本メールの返信にてご案内させていただきます。
+ご確認のほど、よろしくお願いいたします。`;
+
+    navigator.clipboard.writeText(message).then(() => {
+      setCopiedId(app.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-100 flex items-center justify-center text-sm text-gray-500">データを読み込み中...</div>;
+    return <div className="p-8 text-center text-slate-500">データを読み込み中...</div>;
   }
 
   if (!project) {
-    return <div className="min-h-screen bg-gray-100 flex items-center justify-center text-sm text-gray-500">案件が見つかりませんでした。</div>;
+    return <div className="p-8 text-center text-rose-500">案件が見つかりませんでした。</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="space-y-6">
+      {/* 案件概要ヘッダー */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <Link href="/admin/projects" className="text-sm text-gray-500 hover:text-gray-700 underline">
-            ← 管理者一覧に戻る
-          </Link>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-0.5 rounded">
+              {project.platform}
+            </span>
+            <span className="text-xs text-slate-500">報酬: {project.reward}</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-900">{project.title}</h1>
+        </div>
+        <button
+          onClick={handleDownloadCSV}
+          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition shadow-sm"
+        >
+          <span>📥</span> 応募者データをCSV出力
+        </button>
+      </div>
+
+      {/* 応募者一覧テーブル */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h2 className="font-bold text-slate-800 text-sm">応募者一覧 ({applications.length}名)</h2>
         </div>
 
-        {/* サマリー */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex justify-between items-center mb-4 border-b pb-4">
-            <div>
-              <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-1 rounded-full">管理者専用</span>
-              <h1 className="text-xl font-bold text-gray-900 mt-1">{project.projectName}</h1>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-gray-50 p-3 rounded-lg border">
-              <p className="text-xs text-gray-500">総応募数</p>
-              <p className="text-xl font-bold text-gray-900">{applications.length} 名</p>
-            </div>
-            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100">
-              <p className="text-xs text-yellow-700">未対応</p>
-              <p className="text-xl font-bold text-yellow-800">
-                {applications.filter((a) => a.status === "未対応").length} 名
-              </p>
-            </div>
-            <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-              <p className="text-xs text-green-700">採用確定</p>
-              <p className="text-xl font-bold text-green-800">
-                {applications.filter((a) => a.status === "採用").length} 名
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 応募者リスト */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">応募者管理リスト</h2>
-          {applications.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">まだ応募はありません。</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">お名前</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">SNS ID</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">フォロワー数</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-500">ステータス変更</th>
+        {applications.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 text-sm">まだ応募がありません。</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-100 text-slate-700 font-semibold uppercase border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4">応募者名 / メール</th>
+                  <th className="py-3 px-4">SNS / フォロワー</th>
+                  <th className="py-3 px-4">自己PR・備考</th>
+                  <th className="py-3 px-4">ステータス</th>
+                  <th className="py-3 px-4 text-right">操作 / アクション</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {applications.map((app) => (
+                  <tr key={app.id} className="hover:bg-slate-50/80 transition">
+                    <td className="py-3.5 px-4">
+                      <div className="font-bold text-slate-900">{app.name}</div>
+                      <div className="text-slate-400 text-[11px]">{app.email}</div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="font-medium text-indigo-600">{app.snsAccount}</div>
+                      <div className="text-slate-500 text-[11px]">{app.followerCount} 人</div>
+                    </td>
+                    <td className="py-3.5 px-4 max-w-xs truncate" title={app.note}>
+                      {app.note || "-"}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <select
+                        value={app.status || "pending"}
+                        onChange={(e) =>
+                          handleStatusChange(app.id, e.target.value as "pending" | "accepted" | "rejected")
+                        }
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-lg border focus:outline-none ${
+                          app.status === "accepted"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : app.status === "rejected"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        <option value="pending">選考中</option>
+                        <option value="accepted">採用</option>
+                        <option value="rejected">不採用</option>
+                      </select>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => handleCopyMessage(app)}
+                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold px-3 py-1.5 rounded-lg text-[11px] transition inline-flex items-center gap-1"
+                      >
+                        {copiedId === app.id ? "✓ コピー完了！" : "✉️ 採用通知文をコピー"}
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {applications.map((app) => (
-                    <tr key={app.id}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{app.name}</td>
-                      <td className="px-4 py-3 text-indigo-600 font-medium">{app.snsAccount}</td>
-                      <td className="px-4 py-3 text-gray-700">{app.followers?.toLocaleString()}人</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={app.status}
-                          onChange={(e) => handleStatusChange(app.id, e.target.value)}
-                          className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border focus:outline-none ${
-                            app.status === "採用"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : app.status === "不採用"
-                              ? "bg-gray-100 text-gray-600 border-gray-200"
-                              : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                          }`}
-                        >
-                          <option value="未対応">未対応</option>
-                          <option value="検討中">検討中</option>
-                          <option value="採用">採用</option>
-                          <option value="不採用">不採用</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* 案件詳細確認 */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <h2 className="text-md font-bold text-gray-900 mb-4 border-b pb-2">オリエンシート内容確認</h2>
-          <dl className="divide-y divide-gray-200 text-sm">
-            <div className="py-3 grid grid-cols-3">
-              <dt className="text-gray-500">投稿先メディア</dt>
-              <dd className="col-span-2 font-medium text-gray-900 uppercase">{project.media}</dd>
-            </div>
-            <div className="py-3 grid grid-cols-3">
-              <dt className="text-gray-500">必須ハッシュタグ</dt>
-              <dd className="col-span-2 text-indigo-600 font-medium">{project.hashtags}</dd>
-            </div>
-            <div className="py-3 grid grid-cols-3">
-              <dt className="text-gray-500">概要</dt>
-              <dd className="col-span-2 text-gray-700 whitespace-pre-wrap">{project.overview}</dd>
-            </div>
-          </dl>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
