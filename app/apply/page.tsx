@@ -46,9 +46,9 @@ function ApplyFormContent() {
     setLoading(true);
 
     try {
-      // 案件IDをprojectIdとして明示的に保存
-      await addDoc(collection(db, "applications"), {
-        projectId: String(projectId),
+      // サブコレクション (projects/{projectId}/applications) へ追加
+      const subColRef = collection(db, "projects", String(projectId), "applications");
+      await addDoc(subColRef, {
         name,
         email,
         snsAccount,

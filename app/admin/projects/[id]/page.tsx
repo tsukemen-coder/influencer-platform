@@ -16,7 +16,6 @@ interface Project {
 
 interface Application {
   id: string;
-  projectId: string;
   name: string;
   email: string;
   snsAccount: string;
@@ -39,23 +38,21 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
     async function fetchData() {
       try {
         // 1. 案件情報の取得
-        const projectDoc = await getDoc(doc(db, "projects", projectId));
+        const projectDocRef = doc(db, "projects", projectId);
+        const projectDoc = await getDoc(projectDocRef);
         if (projectDoc.exists()) {
           setProject({ id: projectDoc.id, ...projectDoc.data() } as Project);
         }
 
-        // 2. 応募者一覧の取得 (全件取得したのちクライアント側で確実にフィルタリング)
-        const querySnapshot = await getDocs(collection(db, "applications"));
+        // 2. サブコレクション (projects/{projectId}/applications) から応募者を取得
+        const subColRef = collection(db, "projects", projectId, "applications");
+        const querySnapshot = await getDocs(subColRef);
+        
         const appsData: Application[] = [];
         querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          // projectId の一致判定（文字列比較を強制）
-          if (String(data.projectId) === String(projectId)) {
-            appsData.push({ id: docSnap.id, ...data } as Application);
-          }
+          appsData.push({ id: docSnap.id, ...docSnap.data() } as Application);
         });
-        
-        // 応募日時の降順でソート
+
         appsData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
         setApplications(appsData);
       } catch (error) {
@@ -68,10 +65,11 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
     fetchData();
   }, [projectId]);
 
-  // ステータス更新処理
+  // ステータス更新処理 (サブコレクション内のドキュメントを更新)
   const handleStatusChange = async (appId: string, newStatus: "pending" | "accepted" | "rejected") => {
     try {
-      await updateDoc(doc(db, "applications", appId), {
+      const appRef = doc(db, "projects", projectId, "applications", appId);
+      await updateDoc(appRef, {
         status: newStatus,
       });
       setApplications((prev) =>
@@ -112,7 +110,7 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
     document.body.removeChild(link);
   };
 
-  // 採用通知定型文のコピー機能
+  // 採用通知文のコピー機能
   const handleCopyMessage = (app: Application) => {
     const message = `${app.name} 様
 
@@ -150,7 +148,6 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      {/* 戻る導線ナビゲーション */}
       <div>
         <Link
           href="/admin/projects"
