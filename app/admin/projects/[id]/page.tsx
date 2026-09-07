@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { doc, getDoc, collection, query, where, getDocs, updateDoc, Timestamp } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import Link from "next/link";
 
 interface Project {
   id: string;
@@ -37,18 +38,21 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
   useEffect(() => {
     async function fetchData() {
       try {
-        // 案件情報の取得
+        // 1. 案件情報の取得
         const projectDoc = await getDoc(doc(db, "projects", projectId));
         if (projectDoc.exists()) {
           setProject({ id: projectDoc.id, ...projectDoc.data() } as Project);
         }
 
-        // 応募者一覧の取得
-        const q = query(collection(db, "applications"), where("projectId", "==", projectId));
-        const querySnapshot = await getDocs(q);
+        // 2. 応募者一覧の取得 (全件取得したのちクライアント側で確実にフィルタリング)
+        const querySnapshot = await getDocs(collection(db, "applications"));
         const appsData: Application[] = [];
         querySnapshot.forEach((docSnap) => {
-          appsData.push({ id: docSnap.id, ...docSnap.data() } as Application);
+          const data = docSnap.data();
+          // projectId の一致判定（文字列比較を強制）
+          if (String(data.projectId) === String(projectId)) {
+            appsData.push({ id: docSnap.id, ...data } as Application);
+          }
         });
         
         // 応募日時の降順でソート
@@ -134,11 +138,28 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
   }
 
   if (!project) {
-    return <div className="p-8 text-center text-rose-500">案件が見つかりませんでした。</div>;
+    return (
+      <div className="p-8 text-center">
+        <div className="text-rose-500 mb-4">案件が見つかりませんでした。</div>
+        <Link href="/admin/projects" className="text-indigo-600 hover:underline text-sm font-bold">
+          ← 案件一覧に戻る
+        </Link>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
+      {/* 戻る導線ナビゲーション */}
+      <div>
+        <Link
+          href="/admin/projects"
+          className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-indigo-600 transition mb-2"
+        >
+          <span>←</span> 案件一覧に戻る
+        </Link>
+      </div>
+
       {/* 案件概要ヘッダー */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -152,9 +173,10 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
         </div>
         <button
           onClick={handleDownloadCSV}
-          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition shadow-sm"
+          disabled={applications.length === 0}
+          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition shadow-sm"
         >
-          <span>📥</span> 応募者データをCSV出力
+          <span>📥</span> 応募者データをCSV出力 ({applications.length}件)
         </button>
       </div>
 
