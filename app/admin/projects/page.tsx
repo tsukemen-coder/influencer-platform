@@ -38,12 +38,13 @@ export default function AdminProjectsPage() {
     fetchProjects();
   }, []);
 
+  // 編集ボタン押下時に正しく既存データをフォームに反映する
   const handleEditOpen = (project: Project) => {
     setEditingProject(project);
-    setTitle(project.title);
-    setPlatform(project.platform);
-    setReward(project.reward);
-    setStatus(project.status || "active");
+    setTitle(project.title || "");
+    setPlatform(project.platform || "Instagram");
+    setReward(project.reward || "");
+    setStatus(project.status || "draft");
     setDetails(project.details || "");
   };
 
@@ -58,7 +59,7 @@ export default function AdminProjectsPage() {
         details,
       });
       setEditingProject(null);
-      fetchProjects();
+      await fetchProjects();
     } catch (e) {
       console.error(e);
       alert("更新に失敗しました");
@@ -69,7 +70,7 @@ export default function AdminProjectsPage() {
     if (!confirm("本当に削除しますか？")) return;
     try {
       await deleteDoc(doc(db, "projects", id));
-      fetchProjects();
+      await fetchProjects();
     } catch (e) {
       console.error(e);
       alert("削除に失敗しました");
@@ -90,7 +91,7 @@ export default function AdminProjectsPage() {
       setTitle("");
       setReward("");
       setDetails("");
-      fetchProjects();
+      await fetchProjects();
     } catch (e) {
       console.error(e);
       alert("作成に失敗しました");
@@ -108,7 +109,9 @@ export default function AdminProjectsPage() {
           <button
             onClick={() => {
               setTitle("");
+              setPlatform("Instagram");
               setReward("");
+              setStatus("active");
               setDetails("");
               setIsCreateModalOpen(true);
             }}
