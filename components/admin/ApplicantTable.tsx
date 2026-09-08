@@ -1,75 +1,65 @@
 "use client";
 
-import { Application, SelectionStatus, ProgressStatus } from "@/types";
+import { Application, SelectionStatus, ProgressStep } from "@/types";
 
-interface Props {
+interface ApplicantTableProps {
   applications: Application[];
-  onSelectionStatusChange: (appId: string, status: SelectionStatus) => void;
-  onProgressStatusChange: (appId: string, status: ProgressStatus) => void;
+  onStatusChange: (appId: string, status: SelectionStatus) => void;
+  onProgressChange: (appId: string, progressStep: ProgressStep) => void;
 }
 
 export default function ApplicantTable({
   applications,
-  onSelectionStatusChange,
-  onProgressStatusChange,
-}: Props) {
-  if (applications.length === 0) {
-    return <div className="p-12 text-center text-slate-400 text-sm">まだ応募がありません。</div>;
-  }
-
+  onStatusChange,
+  onProgressChange,
+}: ApplicantTableProps) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
       <table className="w-full text-left text-xs text-slate-600">
         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
           <tr>
-            <th className="py-3.5 px-4">応募者名 / SNS</th>
-            <th className="py-3.5 px-4">受注ステータス</th>
-            <th className="py-3.5 px-4">案件進捗ステータス</th>
-            <th className="py-3.5 px-4">連絡先</th>
+            <th className="py-3.5 px-6">応募者名 / メール</th>
+            <th className="py-3.5 px-6">SNSアカウント</th>
+            <th className="py-3.5 px-6">選考ステータス</th>
+            <th className="py-3.5 px-6">制作進捗ステータス</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {applications.map((app) => (
             <tr key={app.id} className="hover:bg-slate-50/80 transition">
-              <td className="py-3.5 px-4">
-                <div className="font-bold text-slate-900 text-sm">{app.name}</div>
-                <div className="text-indigo-600 text-xs font-medium">{app.snsAccount} ({app.followerCount}人)</div>
+              <td className="py-4 px-6">
+                <div className="font-bold text-slate-900">{app.name}</div>
+                <div className="text-slate-400 text-[11px]">{app.email}</div>
               </td>
-              
-              {/* 1. 受注ステータス */}
-              <td className="py-3.5 px-4">
+              <td className="py-4 px-6 font-semibold text-slate-700">
+                {app.snsAccount || "-"}
+              </td>
+              <td className="py-4 px-6">
                 <select
-                  value={app.selectionStatus || "brand_review"}
-                  onChange={(e) => onSelectionStatusChange(app.id, e.target.value as SelectionStatus)}
-                  className="text-xs font-bold px-3 py-1.5 rounded-lg border focus:outline-none bg-white shadow-xs cursor-pointer"
+                  value={app.status || "pending"}
+                  onChange={(e) => onStatusChange(app.id, e.target.value as SelectionStatus)}
+                  className="border border-slate-300 rounded-lg p-1.5 font-bold text-xs focus:outline-indigo-500"
                 >
-                  <option value="brand_review">⏳ ブランド確認中</option>
-                  <option value="accepted">🎉 案件確定</option>
-                  <option value="rejected">❌ お見送り</option>
+                  <option value="pending">ブランド確認中</option>
+                  <option value="approved">案件確定</option>
+                  <option value="rejected">お見送り</option>
                 </select>
               </td>
-
-              {/* 2. 進捗ステータス (案件確定のユーザーのみ変更可能) */}
-              <td className="py-3.5 px-4">
-                {app.selectionStatus === "accepted" ? (
+              <td className="py-4 px-6">
+                {app.status === "approved" ? (
                   <select
-                    value={app.progressStatus || "drafting"}
-                    onChange={(e) => onProgressStatusChange(app.id, e.target.value as ProgressStatus)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-200 focus:outline-none cursor-pointer"
+                    value={app.progressStep || "drafting"}
+                    onChange={(e) => onProgressChange(app.id, e.target.value as ProgressStep)}
+                    className="border border-slate-300 rounded-lg p-1.5 font-bold text-xs focus:outline-indigo-500 bg-indigo-50 text-indigo-900"
                   >
-                    <option value="drafting">📝 下書き作成中</option>
-                    <option value="reviewing">🔍 確認中</option>
-                    <option value="waiting_post">⏳ 投稿待ち</option>
-                    <option value="posted">🚀 投稿済み</option>
-                    <option value="completed">✅ 完了</option>
+                    <option value="drafting">1. 下書き作成中</option>
+                    <option value="reviewing">2. 確認中</option>
+                    <option value="scheduled">3. 投稿待ち</option>
+                    <option value="completed">4. 投稿済み</option>
                   </select>
                 ) : (
-                  <span className="text-slate-400 text-[11px] font-medium">- (確定後に設定可能)</span>
+                  <span className="text-slate-400 text-[11px]">確定後に選択可能</span>
                 )}
-              </td>
-
-              <td className="py-3.5 px-4 text-slate-500 text-xs">
-                {app.email}
               </td>
             </tr>
           ))}

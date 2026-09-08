@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from "firebase/firestore";
-import { Project } from "@/types";
+import { Project, ProjectPublishStatus } from "@/types";
 import Container from "@/components/layout/Container";
 
 export default function AdminProjectsPage() {
@@ -13,11 +13,10 @@ export default function AdminProjectsPage() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // フォーム用状態
   const [title, setTitle] = useState("");
   const [platform, setPlatform] = useState("Instagram");
   const [reward, setReward] = useState("");
-  const [status, setStatus] = useState<"draft" | "active">("active");
+  const [status, setStatus] = useState<ProjectPublishStatus>("active");
   const [details, setDetails] = useState("");
 
   const fetchProjects = async () => {
@@ -44,7 +43,7 @@ export default function AdminProjectsPage() {
     setTitle(project.title);
     setPlatform(project.platform);
     setReward(project.reward);
-    setStatus(project.status);
+    setStatus(project.status || "active");
     setDetails(project.details || "");
   };
 
@@ -145,10 +144,12 @@ export default function AdminProjectsPage() {
                         className={`font-bold px-2.5 py-1 rounded-md text-[11px] ${
                           project.status === "active"
                             ? "bg-emerald-100 text-emerald-800"
+                            : project.status === "closed"
+                            ? "bg-slate-100 text-slate-600"
                             : "bg-amber-100 text-amber-800"
                         }`}
                       >
-                        {project.status === "active" ? "公開中" : "下書き"}
+                        {project.status === "active" ? "公開中" : project.status === "closed" ? "終了" : "下書き"}
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right space-x-3">
@@ -178,7 +179,6 @@ export default function AdminProjectsPage() {
           </div>
         )}
 
-        {/* 編集モーダル */}
         {(editingProject || isCreateModalOpen) && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
@@ -213,11 +213,12 @@ export default function AdminProjectsPage() {
                     <label className="font-bold text-slate-700 block mb-1">公開ステータス</label>
                     <select
                       value={status}
-                      onChange={(e) => setStatus(e.target.value as "draft" | "active")}
+                      onChange={(e) => setStatus(e.target.value as ProjectPublishStatus)}
                       className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
                     >
                       <option value="active">公開中</option>
                       <option value="draft">下書き</option>
+                      <option value="closed">終了</option>
                     </select>
                   </div>
                 </div>
