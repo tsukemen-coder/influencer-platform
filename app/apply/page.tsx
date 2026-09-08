@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 function ApplyFormContent() {
@@ -10,7 +10,7 @@ function ApplyFormContent() {
   const projectId = searchParams.get("projectId");
   const router = useRouter();
 
-  const [projectTitle, setProjectTitle] = useState("");
+  const [project, setProject] = useState<any>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [snsAccount, setSnsAccount] = useState("");
@@ -18,6 +18,7 @@ function ApplyFormContent() {
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (projectId) {
@@ -26,7 +27,7 @@ function ApplyFormContent() {
           const docRef = doc(db, "projects", projectId as string);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setProjectTitle(docSnap.data().title);
+            setProject(docSnap.data());
           }
         } catch (e) {
           console.error("案件情報の取得失敗:", e);
@@ -38,19 +39,37 @@ function ApplyFormContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg("");
+
     if (!projectId) {
       alert("案件IDが見つかりません。");
+      return;
+    }
+
+    if (project?.status === "closed") {
+      alert("この案件はすでに募集を終了しています。");
       return;
     }
 
     setLoading(true);
 
     try {
-      // サブコレクション (projects/{projectId}/applications) へ追加
       const subColRef = collection(db, "projects", String(projectId), "applications");
+
+      // 重複チェック (同じメールアドレスでの重複応募を防止)
+      const q = query(subColRef, where("email", "==", email.trim().toLowerCase()));
+      const existing = await getDocs(q);
+
+      if (!existing.empty) {
+        setErrorMsg("このメールアドレスからはすでに応募済みです。マイページから選考状況をご確認ください。");
+        setLoading(false);
+        return;
+      }
+
+      // サブコレクションへ追加
       await addDoc(subColRef, {
         name,
-        email,
+        email: email.trim().toLowerCase(),
         snsAccount,
         followerCount,
         note,
@@ -69,18 +88,24 @@ function ApplyFormContent() {
 
   if (submitted) {
     return (
-      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center max-w-md mx-auto">
-        <div className="text-4xl mb-3">🎉</div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">ご応募ありがとうございました！</h2>
-        <p className="text-xs text-slate-500 mb-6">
-          選考結果につきましては、ご登録いただいたメールアドレス宛にご連絡いたします。
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center max-w-md mx-auto space-y-4">
+        <div className="text-4xl">🎉</div>
+        <h2 className="text-xl font-bold text-slate-800">ご応募ありがとうございました！</h2>
+        <p className="text-xs text-slate-500">
+          選考状況のご確認や、採用後のオリエンシート閲覧は「応募状況確認ページ」から行っていただけます。
         </p>
-        <button
-          onClick={() => router.push("/projects")}
-          className="bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-lg hover:bg-slate-800 transition"
-        >
-          案件一覧へ戻る
-        </button>
+        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-left text-xs space-y-1">
+          <div className="font-bold text-indigo-900">【確認時に必要な情報】</div>
+          <div className="text-indigo-700">ご登録メールアドレス: <span className="font-mono font-bold">{email}</span></div>
+        </div>
+        <div className="pt-2 flex flex-col gap-2">
+          <button
+            onClick={() => router.push(`/status?email=${encodeURIComponent(email)}`)}
+            className="w-full bg-indigo-600 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-indigo-700 transition"
+          >
+            応募状況を確認する ➔
+          </button>
+        </div>
       </div>
     );
   }
@@ -90,9 +115,15 @@ function ApplyFormContent() {
       <div className="mb-6">
         <span className="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded">応募フォーム</span>
         <h1 className="text-lg font-bold text-slate-900 mt-1">
-          {projectTitle ? `「${projectTitle}」に応募` : "案件への応募"}
+          {project?.title ? `「${project.title}」に応募` : "案件への応募"}
         </h1>
       </div>
+
+      {errorMsg && (
+        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-medium">
+          {errorMsg}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
