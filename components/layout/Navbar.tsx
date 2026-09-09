@@ -27,9 +27,6 @@ export default function Navbar() {
           <Link href="/mypage" className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3.5 py-2 rounded-xl transition">
             👤 マイページ
           </Link>
-          <Link href="/admin/projects" className="text-slate-400 hover:text-slate-600 transition text-[11px]">
-            管理者画面
-          </Link>
         </nav>
       </div>
     </header>
