@@ -48,7 +48,6 @@ function ApplyForm() {
   return (
     <Container>
       <div className="max-w-xl mx-auto space-y-6">
-        {/* 戻るボタンを配置し、フレックスボックスで整えました */}
         <div className="flex justify-between items-center border-b border-slate-200 pb-4">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900">案件への応募</h1>

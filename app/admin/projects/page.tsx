@@ -38,16 +38,12 @@ export default function AdminProjectsPage() {
     fetchProjects();
   }, []);
 
-// 編集ボタン押下時に正しく既存データをフォームに反映する
   const handleEditOpen = (project: Project) => {
     setEditingProject(project);
     setTitle(project.title || "");
     setPlatform(project.platform || "Instagram");
     setReward(project.reward || "");
-    
-    // ↓ ここで案件の現在のステータスをセットします（データがない場合はデフォルトでdraft）
     setStatus(project.status || "draft");
-    
     setDetails(project.details || "");
   };
 
