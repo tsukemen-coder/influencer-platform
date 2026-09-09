@@ -3,22 +3,38 @@
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { Project } from "@/types";
+import { useAuth } from "@/lib/useAuth";
 import Container from "@/components/layout/Container";
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
+  const { user } = useAuth();
+
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isApplied, setIsApplied] = useState(false);
 
   useEffect(() => {
-    const fetchProject = async () => {
+    const fetchProjectAndStatus = async () => {
       try {
         const docRef = doc(db, "projects", resolvedParams.id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           setProject({ id: docSnap.id, ...docSnap.data() } as Project);
+        }
+
+        if (user) {
+          const q = query(
+            collection(db, "applications"),
+            where("projectId", "==", resolvedParams.id),
+            where("userId", "==", user.uid)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            setIsApplied(true);
+          }
         }
       } catch (error) {
         console.error(error);
@@ -27,8 +43,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       }
     };
 
-    fetchProject();
-  }, [resolvedParams.id]);
+    fetchProjectAndStatus();
+  }, [resolvedParams.id, user]);
 
   if (loading) {
     return (
@@ -134,12 +150,27 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 <span className="text-xs text-slate-500 font-bold">報酬</span>
                 <span className="text-lg font-extrabold text-indigo-600">{project.reward}円</span>
               </div>
-              <Link
-                href={`/apply?projectId=${project.id}`}
-                className="block w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-center text-xs transition shadow-sm"
-              >
-                この案件に応募する
-              </Link>
+
+              {isApplied ? (
+                <div className="space-y-2">
+                  <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold py-2.5 rounded-xl text-center text-xs">
+                    ✓ 既に応募済みです
+                  </div>
+                  <Link
+                    href="/mypage"
+                    className="block w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-center text-xs transition"
+                  >
+                    マイページで選考・進捗状況を確認 ➔
+                  </Link>
+                </div>
+              ) : (
+                <Link
+                  href={`/apply?projectId=${project.id}`}
+                  className="block w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-center text-xs transition shadow-sm"
+                >
+                  この案件に応募する
+                </Link>
+              )}
             </div>
           </div>
         </div>

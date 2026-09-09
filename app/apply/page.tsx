@@ -1,92 +1,139 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
+import { useAuth } from "@/lib/useAuth";
+import { Project } from "@/types";
 import Container from "@/components/layout/Container";
 
 function ApplyForm() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const projectId = searchParams.get("projectId") || "";
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId");
+  const { user } = useAuth();
 
+  const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [snsAccount, setSnsAccount] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectId) {
-      alert("案件IDが見つかりません。案件一覧から再度お試しください。");
-      return;
+  useEffect(() => {
+    if (user) {
+      setName(user.displayName || "");
+      setEmail(user.email || "");
+      setSnsAccount(user.snsAccount || "");
     }
+  }, [user]);
 
-    setSubmitting(true);
-    try {
-      // 1. 重複応募チェック（同じprojectIdかつ同じemailのデータが存在するか確認）
-      const q = query(
-        collection(db, "applications"),
-        where("projectId", "==", projectId),
-        where("email", "==", email)
-      );
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        alert("このメールアドレスでは、指定の案件に既に応募済みです。同一案件への複数応募はできません。");
-        setSubmitting(false);
+  useEffect(() => {
+    const checkAndFetch = async () => {
+      if (!projectId || !user) {
+        setLoading(false);
         return;
       }
 
-      // 2. 新規応募登録
+      try {
+        // 案件情報取得
+        const projDoc = await getDoc(doc(db, "projects", projectId));
+        if (projDoc.exists()) {
+          setProject({ id: projDoc.id, ...projDoc.data() } as Project);
+        }
+
+        // 重複応募チェック
+        const q = query(
+          collection(db, "applications"),
+          where("projectId", "==", projectId),
+          where("userId", "==", user.uid)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setAlreadyApplied(true);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAndFetch();
+  }, [projectId, user]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId || !user) return;
+
+    setIsSubmitting(true);
+    try {
       await addDoc(collection(db, "applications"), {
         projectId,
+        userId: user.uid,
         name,
         email,
         snsAccount,
         status: "pending",
-        progressStep: "drafting",
+        progressStep: "applied",
         appliedAt: new Date(),
       });
 
-      alert("応募が完了しました！");
-      router.push("/status");
-    } catch (error) {
-      console.error(error);
-      alert("応募の送信に失敗しました。");
+      alert("応募が完了しました！マイページで進捗を確認できます。");
+      router.push("/mypage");
+    } catch (e) {
+      console.error(e);
+      alert("応募処理に失敗しました。");
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <Container>
+        <div className="text-center py-12 text-xs text-slate-400">読み込み中...</div>
+      </Container>
+    );
+  }
+
+  if (alreadyApplied) {
+    return (
+      <Container>
+        <div className="max-w-md mx-auto text-center py-12 space-y-4">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-lg font-bold text-slate-900">既に応募済みの案件です</h2>
+          <p className="text-xs text-slate-500">この案件には既に応募が完了しています。マイページより選考結果・進捗状況をご確認ください。</p>
+          <button
+            onClick={() => router.push("/mypage")}
+            className="bg-indigo-600 text-white font-bold px-6 py-2.5 rounded-xl text-xs hover:bg-indigo-700 transition"
+          >
+            マイページへ移動する
+          </button>
+        </div>
+      </Container>
+    );
+  }
+
   return (
     <Container>
-      <div className="max-w-xl mx-auto space-y-6">
-        <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900">案件への応募</h1>
-            <p className="text-xs text-slate-500 mt-1">以下のフォームに必要な情報を入力してください。</p>
-          </div>
-          <Link
-            href="/projects"
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition whitespace-nowrap"
-          >
-            ➔ 案件一覧に戻る
-          </Link>
+      <div className="max-w-md mx-auto space-y-6">
+        <div className="text-center space-y-1">
+          <h1 className="text-xl font-extrabold text-slate-900">案件への応募</h1>
+          {project && <p className="text-xs text-indigo-600 font-bold">{project.title}</p>}
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-xs">
           <div>
-            <label className="font-bold text-slate-700 block mb-1">お名前</label>
+            <label className="font-bold text-slate-700 block mb-1">お名前 / 活動名</label>
             <input
               type="text"
+              required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
               className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
-              placeholder="山田 太郎"
             />
           </div>
 
@@ -94,32 +141,30 @@ function ApplyForm() {
             <label className="font-bold text-slate-700 block mb-1">メールアドレス</label>
             <input
               type="email"
+              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
               className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
-              placeholder="example@email.com"
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1">SNSアカウント（ユーザー名など）</label>
+            <label className="font-bold text-slate-700 block mb-1">SNSアカウント名 (例: @account)</label>
             <input
               type="text"
+              required
               value={snsAccount}
               onChange={(e) => setSnsAccount(e.target.value)}
-              required
               className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
-              placeholder="@your_account"
             />
           </div>
 
           <button
             type="submit"
-            disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition mt-4 disabled:opacity-50"
+            disabled={isSubmitting}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-sm disabled:opacity-50"
           >
-            {submitting ? "判定中..." : "応募を送信する"}
+            {isSubmitting ? "送信中..." : "利用規約に同意して応募する"}
           </button>
         </form>
       </div>
