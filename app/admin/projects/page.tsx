@@ -14,10 +14,17 @@ export default function AdminProjectsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const [title, setTitle] = useState("");
-  const [platform, setPlatform] = useState("Instagram");
+  const [platform, setPlatform] = useState<"Instagram" | "TikTok" | "YouTube">("Instagram");
   const [reward, setReward] = useState("");
   const [status, setStatus] = useState<ProjectPublishStatus>("active");
-  const [details, setDetails] = useState("");
+  const [coverImage, setCoverImage] = useState("");
+  const [recruitmentPeriod, setRecruitmentPeriod] = useState("");
+  const [postingPeriod, setPostingPeriod] = useState("");
+  const [summary, setSummary] = useState("");
+  const [requiredCuts, setRequiredCuts] = useState("");
+  const [captionRules, setCaptionRules] = useState("");
+  const [hashtags, setHashtags] = useState("");
+  const [mention, setMention] = useState("");
 
   const fetchProjects = async () => {
     try {
@@ -38,30 +45,67 @@ export default function AdminProjectsPage() {
     fetchProjects();
   }, []);
 
+  const resetForm = () => {
+    setTitle("");
+    setPlatform("Instagram");
+    setReward("");
+    setStatus("active");
+    setCoverImage("");
+    setRecruitmentPeriod("");
+    setPostingPeriod("");
+    setSummary("");
+    setRequiredCuts("");
+    setCaptionRules("");
+    setHashtags("");
+    setMention("");
+  };
+
   const handleEditOpen = (project: Project) => {
     setEditingProject(project);
     setTitle(project.title || "");
     setPlatform(project.platform || "Instagram");
     setReward(project.reward || "");
     setStatus(project.status || "draft");
-    setDetails(project.details || "");
+    setCoverImage(project.coverImage || "");
+    setRecruitmentPeriod(project.recruitmentPeriod || "");
+    setPostingPeriod(project.postingPeriod || "");
+    setSummary(project.summary || "");
+    setRequiredCuts(project.requiredCuts || "");
+    setCaptionRules(project.captionRules || "");
+    setHashtags(project.hashtags || "");
+    setMention(project.mention || "");
   };
 
-  const handleUpdate = async () => {
-    if (!editingProject) return;
+  const handleSave = async () => {
+    const data = {
+      title,
+      platform,
+      reward,
+      status,
+      coverImage,
+      recruitmentPeriod,
+      postingPeriod,
+      summary,
+      requiredCuts,
+      captionRules,
+      hashtags,
+      mention,
+      createdAt: new Date(),
+    };
+
     try {
-      await updateDoc(doc(db, "projects", editingProject.id), {
-        title,
-        platform,
-        reward,
-        status,
-        details,
-      });
+      if (editingProject) {
+        await updateDoc(doc(db, "projects", editingProject.id), data);
+      } else {
+        await addDoc(collection(db, "projects"), data);
+      }
       setEditingProject(null);
+      setIsCreateModalOpen(false);
+      resetForm();
       await fetchProjects();
     } catch (e) {
       console.error(e);
-      alert("更新に失敗しました");
+      alert("保存に失敗しました");
     }
   };
 
@@ -76,42 +120,17 @@ export default function AdminProjectsPage() {
     }
   };
 
-  const handleCreate = async () => {
-    try {
-      await addDoc(collection(db, "projects"), {
-        title,
-        platform,
-        reward,
-        status,
-        details,
-        createdAt: new Date(),
-      });
-      setIsCreateModalOpen(false);
-      setTitle("");
-      setReward("");
-      setDetails("");
-      await fetchProjects();
-    } catch (e) {
-      console.error(e);
-      alert("作成に失敗しました");
-    }
-  };
-
   return (
     <Container>
       <div className="space-y-6">
         <div className="flex justify-between items-center border-b border-slate-200 pb-5">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900">案件管理一覧</h1>
-            <p className="text-xs text-slate-500 mt-1">案件の作成・編集およびステータス管理を行えます。</p>
+            <p className="text-xs text-slate-500 mt-1">案件の作成・編集およびオリエン資料の登録を行えます。</p>
           </div>
           <button
             onClick={() => {
-              setTitle("");
-              setPlatform("Instagram");
-              setReward("");
-              setStatus("active");
-              setDetails("");
+              resetForm();
               setIsCreateModalOpen(true);
             }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-sm"
@@ -183,33 +202,55 @@ export default function AdminProjectsPage() {
 
         {(editingProject || isCreateModalOpen) && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
               <h2 className="text-base font-bold text-slate-900">
-                {isCreateModalOpen ? "新規案件追加" : "案件編集"}
+                {isCreateModalOpen ? "新規案件追加" : "案件・オリエン情報編集"}
               </h2>
 
               <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">案件タイトル</label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">案件タイトル</label>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">カバー画像URL</label>
+                    <input
+                      type="text"
+                      value={coverImage}
+                      onChange={(e) => setCoverImage(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-slate-700 block mb-1">媒体</label>
                     <select
                       value={platform}
-                      onChange={(e) => setPlatform(e.target.value)}
+                      onChange={(e) => setPlatform(e.target.value as "Instagram" | "TikTok" | "YouTube")}
                       className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
                     >
                       <option value="Instagram">Instagram</option>
                       <option value="TikTok">TikTok</option>
                       <option value="YouTube">YouTube</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">報酬金額</label>
+                    <input
+                      type="text"
+                      value={reward}
+                      onChange={(e) => setReward(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
                   </div>
                   <div>
                     <label className="font-bold text-slate-700 block mb-1">公開ステータス</label>
@@ -224,27 +265,85 @@ export default function AdminProjectsPage() {
                     </select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">募集期間</label>
+                    <input
+                      type="text"
+                      value={recruitmentPeriod}
+                      onChange={(e) => setRecruitmentPeriod(e.target.value)}
+                      placeholder="例: 2026-09-01 〜 2026-09-10"
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">投稿期限</label>
+                    <input
+                      type="text"
+                      value={postingPeriod}
+                      onChange={(e) => setPostingPeriod(e.target.value)}
+                      placeholder="例: 2026-09-20 まで"
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">報酬金額・条件</label>
-                  <input
-                    type="text"
-                    value={reward}
-                    onChange={(e) => setReward(e.target.value)}
+                  <label className="font-bold text-slate-700 block mb-1">【概要・ブランド紹介】</label>
+                  <textarea
+                    rows={2}
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
                   />
                 </div>
+
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">オリエン資料URL / 連絡先など</label>
+                  <label className="font-bold text-slate-700 block mb-1">【必須撮影カット・撮影シーン】</label>
                   <textarea
-                    rows={3}
-                    value={details}
-                    onChange={(e) => setDetails(e.target.value)}
+                    rows={2}
+                    value={requiredCuts}
+                    onChange={(e) => setRequiredCuts(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
                   />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">【キャプション記載内容】</label>
+                  <textarea
+                    rows={2}
+                    value={captionRules}
+                    onChange={(e) => setCaptionRules(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">【ハッシュタグ】</label>
+                    <input
+                      type="text"
+                      value={hashtags}
+                      onChange={(e) => setHashtags(e.target.value)}
+                      placeholder="#PR #商品名"
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">【メンション】</label>
+                    <input
+                      type="text"
+                      value={mention}
+                      onChange={(e) => setMention(e.target.value)}
+                      placeholder="@account_name"
+                      className="w-full border border-slate-300 rounded-lg p-2.5 focus:outline-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   onClick={() => {
                     setEditingProject(null);
@@ -255,10 +354,10 @@ export default function AdminProjectsPage() {
                   キャンセル
                 </button>
                 <button
-                  onClick={isCreateModalOpen ? handleCreate : handleUpdate}
+                  onClick={handleSave}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700"
                 >
-                  保存
+                  保存する
                 </button>
               </div>
             </div>
