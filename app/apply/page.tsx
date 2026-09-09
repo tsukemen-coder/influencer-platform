@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import Container from "@/components/layout/Container";
 
 function ApplyForm() {
@@ -26,6 +26,21 @@ function ApplyForm() {
 
     setSubmitting(true);
     try {
+      // 1. 重複応募チェック（同じprojectIdかつ同じemailのデータが存在するか確認）
+      const q = query(
+        collection(db, "applications"),
+        where("projectId", "==", projectId),
+        where("email", "==", email)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        alert("このメールアドレスでは、指定の案件に既に応募済みです。同一案件への複数応募はできません。");
+        setSubmitting(false);
+        return;
+      }
+
+      // 2. 新規応募登録
       await addDoc(collection(db, "applications"), {
         projectId,
         name,
@@ -35,6 +50,7 @@ function ApplyForm() {
         progressStep: "drafting",
         appliedAt: new Date(),
       });
+
       alert("応募が完了しました！");
       router.push("/status");
     } catch (error) {
@@ -103,7 +119,7 @@ function ApplyForm() {
             disabled={submitting}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition mt-4 disabled:opacity-50"
           >
-            {submitting ? "送信中..." : "応募を送信する"}
+            {submitting ? "判定中..." : "応募を送信する"}
           </button>
         </form>
       </div>
