@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
+import { useSearchParams } from "next/navigation";
+import { db, storage } from "@/lib/firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "@/lib/useAuth";
 import { Application, Project, AICheckResult } from "@/types";
 import Container from "@/components/layout/Container";
@@ -12,8 +14,11 @@ interface JoinedApp extends Application {
   project?: Project;
 }
 
-export default function MyPage() {
+function MyPageContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token"); // URLパラメータからのトークン取得
+
   const [apps, setApps] = useState<JoinedApp[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,10 +29,27 @@ export default function MyPage() {
   const [checking, setChecking] = useState(false);
   const [aiResult, setAiResult] = useState<AICheckResult | null>(null);
 
+  // メディア添付用（追加）
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+
   const fetchUserApplications = async () => {
-    if (!user) return;
     try {
-      const q = query(collection(db, "applications"), where("userId", "==", user.uid));
+      setLoading(true);
+      let q;
+
+      // ログイン中なら Auth UID、それ以外でトークンがあればトークンでデータ取得（端末またぎ対応）
+      if (user?.uid) {
+        q = query(collection(db, "applications"), where("userId", "==", user.uid));
+      } else if (token) {
+        q = query(collection(db, "applications"), where("token", "==", token));
+      } else {
+        setApps([]);
+        setLoading(false);
+        return;
+      }
+
       const snap = await getDocs(q);
       const list: JoinedApp[] = [];
 
@@ -54,7 +76,17 @@ export default function MyPage() {
 
   useEffect(() => {
     fetchUserApplications();
-  }, [user]);
+  }, [user, token]);
+
+  // 画像・動画ファイル選択処理（追加）
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      setSelectedFiles((prev) => [...prev, ...filesArray]);
+      const newPreviews = filesArray.map((file) => URL.createObjectURL(file));
+      setPreviewUrls((prev) => [...prev, ...newPreviews]);
+    }
+  };
 
   // AIチェックの実行
   const handleAICheck = async () => {
@@ -73,7 +105,7 @@ export default function MyPage() {
       });
 
       const data = await res.json();
-      setAiResult(data);
+      setAiResult(data.result || data);
     } catch (e) {
       console.error(e);
       alert("AI診断中にエラーが発生しました。");
@@ -82,22 +114,39 @@ export default function MyPage() {
     }
   };
 
-  // 下書き保存処理
+  // 下書き保存 ＆ 画像・動画アップロード処理（拡張）
   const handleSaveDraft = async () => {
     if (!selectedApp || !aiResult) return;
     try {
+      setUploading(true);
+
+      // Firebase Storageへ新規ファイルを保存
+      const uploadedMediaUrls: string[] = [...(selectedApp.draftMediaUrls || [])];
+      for (const file of selectedFiles) {
+        const storageRef = ref(storage, `drafts/${selectedApp.id}/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(snapshot.ref);
+        uploadedMediaUrls.push(downloadUrl);
+      }
+
       await updateDoc(doc(db, "applications", selectedApp.id), {
         draftText,
+        draftMediaUrls: uploadedMediaUrls, // 追加した画像・動画URLを更新
         aiCheckResult: aiResult,
         progressStep: "draft_submitted",
         updatedAt: new Date(),
       });
-      alert("下書きとAI診断結果を提出しました！");
+
+      alert("下書き（文章・画像データ）とAI診断結果を提出しました！");
       setSelectedApp(null);
+      setSelectedFiles([]);
+      setPreviewUrls([]);
       await fetchUserApplications();
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました。");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -139,7 +188,7 @@ export default function MyPage() {
           <div className="text-center py-12 text-xs text-slate-400">読み込み中...</div>
         ) : apps.length === 0 ? (
           <div className="text-center py-12 space-y-3">
-            <p className="text-xs text-slate-400">まだ応募している案件はありません。</p>
+            <p className="text-xs text-slate-400">該当する応募情報が見つかりません。</p>
             <Link
               href="/projects"
               className="inline-block bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl text-xs"
@@ -206,6 +255,8 @@ export default function MyPage() {
                           setSelectedApp(app);
                           setDraftText(app.draftText || "");
                           setAiResult(app.aiCheckResult || null);
+                          setPreviewUrls(app.draftMediaUrls || []);
+                          setSelectedFiles([]);
                         }}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl transition"
                       >
@@ -250,8 +301,9 @@ export default function MyPage() {
                 <p className="font-bold text-slate-700">【必須メンション】 {selectedApp.project?.mention}</p>
               </div>
 
+              {/* キャプション入力 */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">投稿用キャプション・下書き本文</label>
+                <label className="font-bold text-slate-700 block mb-1">① 投稿用キャプション・下書き本文</label>
                 <textarea
                   rows={6}
                   value={draftText}
@@ -261,7 +313,30 @@ export default function MyPage() {
                 />
               </div>
 
-              <div className="flex justify-between items-center">
+              {/* 画像・動画添付（追加部分） */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <label className="font-bold text-slate-700 block">② 投稿予定の画像・動画を添付</label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileChange}
+                  className="block w-full text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer"
+                />
+
+                {/* プレビュー表示 */}
+                {previewUrls.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 pt-2">
+                    {previewUrls.map((url, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                        <img src={url} alt={`preview-${idx}`} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
                 <button
                   onClick={handleAICheck}
                   disabled={checking || !draftText.trim()}
@@ -304,10 +379,10 @@ export default function MyPage() {
                 </button>
                 <button
                   onClick={handleSaveDraft}
-                  disabled={!aiResult}
+                  disabled={!aiResult || uploading}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition disabled:opacity-50"
                 >
-                  下書きを管理者に提出
+                  {uploading ? "送信中..." : "下書きを管理者に提出"}
                 </button>
               </div>
             </div>
@@ -315,5 +390,13 @@ export default function MyPage() {
         )}
       </div>
     </Container>
+  );
+}
+
+export default function MyPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">読み込み中...</div>}>
+      <MyPageContent />
+    </Suspense>
   );
 }

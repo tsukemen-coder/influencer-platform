@@ -19,7 +19,7 @@ export interface AICheckResult {
 export interface UserProfile {
   uid: string;
   displayName: string;
-  email: string;
+  email?: string;
   snsAccount: string;
   avatarUrl?: string;
 }
@@ -30,8 +30,9 @@ export interface Application {
   projectTitle?: string;
   userId: string;
   name: string;
-  email: string;
+  email?: string; // メールアドレスは任意（省略可能）
   snsAccount: string;
+  token?: string; // 個別アクセス用トークン（端末またぎ用）
   status: SelectionStatus;
   progressStep: ProgressStep;
   draftText?: string;
