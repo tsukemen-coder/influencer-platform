@@ -63,9 +63,9 @@ export default function AdminProjectsPage() {
   const handleEditOpen = (project: Project) => {
     setEditingProject(project);
     setTitle(project.title || "");
-    setPlatform(project.platform || "Instagram");
-    setReward(project.reward || "");
-    setStatus(project.status || "draft");
+    const [platform, setPlatform] = useState<string>("Instagram");
+    const [reward, setReward] = useState<string | number>("");
+    const [status, setStatus] = useState<string>("draft");
     setCoverImage(project.coverImage || "");
     setRecruitmentPeriod(project.recruitmentPeriod || "");
     setPostingPeriod(project.postingPeriod || "");

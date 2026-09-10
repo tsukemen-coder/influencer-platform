@@ -19,8 +19,7 @@ export default function ProjectsPage() {
         const list: Project[] = [];
         snap.forEach((doc) => {
           const data = doc.data() as Omit<Project, "id">;
-          // status が 'published'（公開中）の案件だけを表示
-          if ((data.status as string) === "published" || (data.status as string) === "公開中" || data.status !== ("draft" as unknown)) {
+          if ((data.status as string) !== "draft" && (data.status as string) !== "下書き") {
             list.push({ ...data, id: doc.id });
           }
         });
@@ -40,7 +39,9 @@ export default function ProjectsPage() {
       <div className="space-y-6">
         <div className="border-b border-slate-200 pb-5">
           <h1 className="text-2xl font-extrabold text-slate-900">募集中の案件一覧</h1>
-          <p className="text-xs text-slate-500 mt-1">気になる案件を選んでご応募ください。</p>
+          <p className="text-xs text-slate-500 mt-1">
+            案件の詳細・撮影指示（オリエンシート）を確認してご応募ください。
+          </p>
         </div>
 
         {loading ? (
@@ -59,18 +60,12 @@ export default function ProjectsPage() {
                   <p className="text-indigo-600 font-bold">報酬: {p.reward}円</p>
                 </div>
 
-                <div className="pt-2 flex gap-2">
+                <div className="pt-2">
                   <Link
                     href={`/projects/${p.id}`}
-                    className="flex-1 text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition"
+                    className="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition"
                   >
-                    詳細を見る
-                  </Link>
-                  <Link
-                    href={`/apply?projectId=${p.id}`}
-                    className="flex-1 text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition"
-                  >
-                    この案件に応募する
+                    詳細（オリエン）を確認する ➔
                   </Link>
                 </div>
               </div>
